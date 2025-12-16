@@ -350,7 +350,7 @@ def process_directory(input_dir, output_file, log_callback=None):
         df = apply_auto_labels(df)
     
     # Reorder columns for better readability
-    base_cols = ["Filename", "MRN", "Overall_Diagnosis", "Label", "Disease_Type"]
+    base_cols = ["Filename", "MRN", "Name", "Age", "Study Date", "Overall_Diagnosis", "Label", "Disease_Type"]
     group_cols = ["Group_LV_Status", "Group_Diastolic_Status", "Group_RV_Status", "Group_Atria_Status", "Group_Valves_Status", "Group_PASP_Status", "Group_Structural_Status"]
     param_cols = ["LVEF", "LVEDVi", "IVSd", "PASP", "E/A Ratio", "LAVi", "TAPSE", "Impression"]
     
