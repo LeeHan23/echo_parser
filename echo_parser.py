@@ -120,19 +120,14 @@ def apply_auto_labels(df):
     """
     Applies detailed rule-based classification to the dataset.
     
-    Generates status for:
-    1. Group_LV_Status
-    2. Group_Diastolic_Status
-    3. Group_RV_Status
-    4. Group_Atria_Status
-    5. Group_Valves_Status
-    6. Group_PASP_Status
-    7. Group_Structural_Status
-    
-    And an 'Overall_Diagnosis' (Normal/Abnormal).
+    Generates:
+    - Multi-label binary flags for each disease condition
+    - Group status for 7 cardiac systems
+    - Overall diagnosis (Normal/Abnormal)
+    - Legacy Label/Disease_Type for backward compatibility
     """
     
-    # Output columns
+    # Output columns - Group status
     group_lv = []
     group_diastolic = []
     group_rv = []
@@ -142,7 +137,20 @@ def apply_auto_labels(df):
     group_structural = []
     overall_diagnosis = []
     
-    # Legacy columns (keeping for backward compatibility or ML training)
+    # Multi-label binary flags (NEW)
+    flag_normal = []
+    flag_hfref = []
+    flag_rwma = []
+    flag_dcm = []
+    flag_rv_dysfunction = []
+    flag_diastolic_dysfunction = []
+    flag_lvh = []
+    flag_hcm = []
+    flag_valvular_disease = []
+    flag_elevated_pasp = []
+    flag_structural_abnormality = []
+    
+    # Legacy columns (keeping for backward compatibility)
     labels = [] 
     disease_types = []
 
@@ -183,79 +191,112 @@ def apply_auto_labels(df):
         mitral_regurg = str(row.get('Mitral Regurgitation', '')).lower()
         aortic_regurg = str(row.get('Aortic Regurgitation', '')).lower()
         tricuspid_regurg = str(row.get('Tricuspid Regurgitation', '')).lower()
-        pulm_regurg = str(row.get('Pulmonary Regurgitation', '')).lower() # Added PR
+        pulm_regurg = str(row.get('Pulmonary Regurgitation', '')).lower()
         
         def is_significant_regurg(text):
             return any(x in text for x in ['mild', 'moderate', 'severe']) and 'trivial' not in text and 'minimal' not in text
         
-        # --- GROUP 1: LV Loop ---
-        # Abnormal if: EF < 52, Significant LVH (IVSd > 1.1), Dilated (LVEDVi > 75 - rough cutoff), or RWMA in impression
-        has_rwma = any(x in impression for x in ['hypokinetic', 'akinetic', 'dyskinetic', 'infarction', 'ischemia', 'rwma'])
-        lv_status = "Normal"
-        if lvef < 52: lv_status = "Abnormal (Reduced EF)"
-        elif has_rwma: lv_status = "Abnormal (RWMA)"
-        elif ivsd > 1.2 or lvpwd > 1.2: lv_status = "Abnormal (LVH)" # Strict clinical cutoff usually >1.1 for women, >1.2 men
-        elif lvedvi and lvedvi > 75: lv_status = "Abnormal (Dilated)"
+        # --- MULTI-LABEL DISEASE FLAGS ---
         
-        # --- GROUP 2: Diastolic Function ---
-        # Abnormal if: Grade >= 1, or explicit mention of dysfunction
+        # HFrEF: Reduced ejection fraction
+        has_hfref = lvef < 52
+        
+        # RWMA: Regional wall motion abnormality
+        has_rwma = any(x in impression for x in ['hypokinetic', 'akinetic', 'dyskinetic', 'infarction', 'ischemia', 'rwma'])
+        
+        # DCM: Dilated cardiomyopathy
+        has_dcm = ('dilated cardiomyopathy' in impression or 'dcm' in impression or (lvedvi and lvedvi > 75))
+        
+        # RV Dysfunction
+        has_rv_dysfunction = ((tapse and tapse < 1.7) or (tv_s and tv_s < 9.5) or 
+                              "rv dysfunction" in impression or "right ventricular dysfunction" in impression)
+        
+        # Diastolic Dysfunction (any grade)
+        has_diastolic_dysfunction = (diastolic_grade >= 1 or "diastolic dysfunction" in impression or 
+                                      "impaired relaxation" in impression or (lavi and lavi > 34))
+        
+        # LVH: Left ventricular hypertrophy
+        has_lvh = (ivsd > 1.2 or lvpwd > 1.2)
+        
+        # HCM: Hypertrophic cardiomyopathy
+        has_hcm = ('hypertrophic cardiomyopathy' in impression or 'hcm' in impression or 'hocm' in impression)
+        
+        # Valvular Disease: Any significant regurgitation or stenosis
+        has_valvular = (is_significant_regurg(mitral_regurg) or is_significant_regurg(aortic_regurg) or 
+                        is_significant_regurg(tricuspid_regurg) or is_significant_regurg(pulm_regurg) or 
+                        "stenosis" in impression)
+        
+        # Elevated PASP
+        has_elevated_pasp = pasp > 40
+        
+        # Structural Abnormality: Effusion, thrombus, mass, shunt
+        has_structural = any(x in impression for x in ["effusion", "thrombus", "mass", "asd", "vsd", "shunt"])
+        
+        # Overall Normal: only if ALL flags are false
+        is_normal = not any([has_hfref, has_rwma, has_dcm, has_rv_dysfunction, has_diastolic_dysfunction, 
+                             has_lvh, has_hcm, has_valvular, has_elevated_pasp, has_structural])
+        
+        # Append multi-label flags (1 = present, 0 = absent)
+        flag_normal.append(1 if is_normal else 0)
+        flag_hfref.append(1 if has_hfref else 0)
+        flag_rwma.append(1 if has_rwma else 0)
+        flag_dcm.append(1 if has_dcm else 0)
+        flag_rv_dysfunction.append(1 if has_rv_dysfunction else 0)
+        flag_diastolic_dysfunction.append(1 if has_diastolic_dysfunction else 0)
+        flag_lvh.append(1 if has_lvh else 0)
+        flag_hcm.append(1 if has_hcm else 0)
+        flag_valvular_disease.append(1 if has_valvular else 0)
+        flag_elevated_pasp.append(1 if has_elevated_pasp else 0)
+        flag_structural_abnormality.append(1 if has_structural else 0)
+        
+        # --- GROUP STATUS (for human readability) ---
+        lv_status = "Normal"
+        if has_hfref: lv_status = "Abnormal (Reduced EF)"
+        elif has_rwma: lv_status = "Abnormal (RWMA)"
+        elif has_lvh: lv_status = "Abnormal (LVH)"
+        elif has_dcm: lv_status = "Abnormal (Dilated)"
+        
         diastolic_status = "Normal"
         if diastolic_grade >= 1: diastolic_status = f"Abnormal (Grade {int(diastolic_grade)})"
-        elif "diastolic dysfunction" in impression or "impaired relaxation" in impression: diastolic_status = "Abnormal (Impression)"
-        elif lavi and lavi > 34: diastolic_status = "Abnormal (Dilated LA)"
+        elif has_diastolic_dysfunction: diastolic_status = "Abnormal (Impression)"
         
-        # --- GROUP 3: RV Loop ---
-        # Abnormal if: TAPSE < 1.7, S' < 9.5, or RV dysfunction in impression
         rv_status = "Normal"
         if tapse and tapse < 1.7: rv_status = "Abnormal (Reduced TAPSE)"
         elif tv_s and tv_s < 9.5: rv_status = "Abnormal (Reduced S')"
-        elif "rv dysfunction" in impression or "right ventricular dysfunction" in impression: rv_status = "Abnormal (Impression)"
+        elif has_rv_dysfunction: rv_status = "Abnormal (Impression)"
         
-        # --- GROUP 4: Atria ---
-        # Abnormal if: LAVi > 34 or RAVi > 34 (Wait, LAVi is often grouped with Diastolic, but separate parameter here)
-        # We will check RAVi specifically here, or dilated atria in impression
         atria_status = "Normal"
         if ravi and ravi > 34: atria_status = "Abnormal (Dilated RA)"
-        elif "atrial enlargement" in impression or "dilated la" in impression or "dilated ra" in impression: atria_status = "Abnormal (Impression)"
+        elif "atrial enlargement" in impression or "dilated la" in impression or "dilated ra" in impression: 
+            atria_status = "Abnormal (Impression)"
         
-        # --- GROUP 5: Valves ---
-        # Abnormal if: Mild/Mod/Sev regurg OR Stenosis markers
         valves_status = "Normal"
         abnormal_valves = []
         if is_significant_regurg(mitral_regurg): abnormal_valves.append("MR")
         if is_significant_regurg(aortic_regurg): abnormal_valves.append("AR")
         if is_significant_regurg(tricuspid_regurg): abnormal_valves.append("TR")
         if is_significant_regurg(pulm_regurg): abnormal_valves.append("PR")
-        
         if "stenosis" in impression: abnormal_valves.append("Stenosis")
-        
         if abnormal_valves:
             valves_status = "Abnormal (" + ", ".join(abnormal_valves) + ")"
             
-        # --- GROUP 6: PASP ---
-        # Abnormal if: PASP > 40
         pasp_status = "Normal"
-        if pasp > 40:
+        if has_elevated_pasp:
             pasp_status = f"Abnormal ({int(pasp)} mmHg)"
             
-        # --- GROUP 7: Structural ---
-        # Scan impression for keywords
         structural_status = "Normal"
         struct_issues = []
         if "effusion" in impression: struct_issues.append("Effusion")
         if "thrombus" in impression: struct_issues.append("Thrombus")
         if "mass" in impression: struct_issues.append("Mass")
         if "asd" in impression or "vsd" in impression or "shunt" in impression: struct_issues.append("Shunt")
-        
         if struct_issues:
             structural_status = "Abnormal (" + ", ".join(struct_issues) + ")"
 
-        # --- AGGREGATION ---
-        # Overall Abnormal if ANY group is abnormal
-        is_abnormal = any(s.startswith("Abnormal") for s in [lv_status, diastolic_status, rv_status, atria_status, valves_status, pasp_status, structural_status])
-        final_diagnosis = "Abnormal" if is_abnormal else "Normal"
+        # Overall diagnosis
+        final_diagnosis = "Normal" if is_normal else "Abnormal"
         
-        # Fill lists
+        # Append group status
         group_lv.append(lv_status)
         group_diastolic.append(diastolic_status)
         group_rv.append(rv_status)
@@ -265,38 +306,50 @@ def apply_auto_labels(df):
         group_structural.append(structural_status)
         overall_diagnosis.append(final_diagnosis)
         
-        # --- LEGACY MAPPING (Keep existing logic roughly aligned but updated) ---
-        # Use existing logic for compatibility if needed, or map from new findings
-        # For simplicity, we keep the previous 'Disease_Type' logic effectively
-        # But we can override Class based on 'final_diagnosis'
-        
+        # --- LEGACY MAPPING (backward compatibility) ---
         curr_label = 0
         curr_type = "Normal"
         
-        if final_diagnosis == "Abnormal":
-             # Prioritize severity types
-             if "Reduced EF" in lv_status or "HFrEF" in lv_status:
-                 curr_label = 2; curr_type = "HFrEF"
-             elif "RWMA" in lv_status:
-                 curr_label = 2; curr_type = "RWMA"
-             elif "Dilated" in lv_status:
-                 curr_label = 2; curr_type = "DCM"
-             elif "RV" in rv_status and "Abnormal" in rv_status:
-                 curr_label = 2; curr_type = "RV Dysfunction"
-             elif "Diastolic" in diastolic_status and "Abnormal" in diastolic_status:
-                 curr_label = 2; curr_type = "Diastolic Dysfunction"
-             elif "LVH" in lv_status:
-                 curr_label = 1; curr_type = "LVH"
-             else:
-                 curr_label = 2; curr_type = "Other Abnormality" # Valves/PASP fall here
+        if not is_normal:
+            # Prioritize severity types
+            if has_hfref:
+                curr_label = 2; curr_type = "HFrEF"
+            elif has_rwma:
+                curr_label = 2; curr_type = "RWMA"
+            elif has_dcm:
+                curr_label = 2; curr_type = "DCM"
+            elif has_rv_dysfunction:
+                curr_label = 2; curr_type = "RV Dysfunction"
+            elif has_diastolic_dysfunction:
+                curr_label = 2; curr_type = "Diastolic Dysfunction"
+            elif has_hcm:
+                curr_label = 1; curr_type = "HCM"
+            elif has_lvh:
+                curr_label = 1; curr_type = "LVH"
+            else:
+                curr_label = 2; curr_type = "Other Abnormality"
         
         labels.append(curr_label)
         disease_types.append(curr_type)
 
-    # Assign columns
+    # Assign all columns to dataframe
     df['Label'] = labels
     df['Disease_Type'] = disease_types
     
+    # Multi-label flags
+    df['Flag_Normal'] = flag_normal
+    df['Flag_HFrEF'] = flag_hfref
+    df['Flag_RWMA'] = flag_rwma
+    df['Flag_DCM'] = flag_dcm
+    df['Flag_RV_Dysfunction'] = flag_rv_dysfunction
+    df['Flag_Diastolic_Dysfunction'] = flag_diastolic_dysfunction
+    df['Flag_LVH'] = flag_lvh
+    df['Flag_HCM'] = flag_hcm
+    df['Flag_Valvular_Disease'] = flag_valvular_disease
+    df['Flag_Elevated_PASP'] = flag_elevated_pasp
+    df['Flag_Structural_Abnormality'] = flag_structural_abnormality
+    
+    # Group status
     df['Group_LV_Status'] = group_lv
     df['Group_Diastolic_Status'] = group_diastolic
     df['Group_RV_Status'] = group_rv
@@ -351,11 +404,17 @@ def process_directory(input_dir, output_file, log_callback=None):
     
     # Reorder columns for better readability
     base_cols = ["Filename", "MRN", "Name", "Age", "Study Date", "Overall_Diagnosis", "Label", "Disease_Type"]
+    
+    # Multi-label flags (NEW - for ML training)
+    flag_cols = ["Flag_Normal", "Flag_HFrEF", "Flag_RWMA", "Flag_DCM", "Flag_RV_Dysfunction", 
+                 "Flag_Diastolic_Dysfunction", "Flag_LVH", "Flag_HCM", "Flag_Valvular_Disease", 
+                 "Flag_Elevated_PASP", "Flag_Structural_Abnormality"]
+    
     group_cols = ["Group_LV_Status", "Group_Diastolic_Status", "Group_RV_Status", "Group_Atria_Status", "Group_Valves_Status", "Group_PASP_Status", "Group_Structural_Status"]
     param_cols = ["LVEF", "LVEDVi", "IVSd", "PASP", "E/A Ratio", "LAVi", "TAPSE", "Impression"]
     
     # Combine and ensure existence
-    final_cols = base_cols + group_cols + param_cols + ["Error"]
+    final_cols = base_cols + flag_cols + group_cols + param_cols + ["Error"]
     
     # Filter only columns that actually exist (handling potential dynamic missingness)
     final_cols = [c for c in final_cols if c in df.columns]
