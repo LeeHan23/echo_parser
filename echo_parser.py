@@ -9,7 +9,7 @@ from datetime import datetime
 PATTERNS = {
     # General
     "MRN": r"MRN\s*[:]\s*([A-Za-z0-9]+)",
-    "Name": r"Name\s*[:]\s*(.*?)Height",
+    # "Name": r"Name\s*[:]\s*(.*?)Height",  # Commented out for privacy
     "Age": r"Age\s*[:]\s*(\d+)",
     "Study Date": r"Procedure Date\s*[:]\s*(\d{4}-\d{2}-\d{2})",
     
@@ -89,8 +89,8 @@ def parse_echo_report(pdf_path):
             data[field] = None
 
     # Special handling for Name (cleanup if needed)
-    if data["Name"]:
-        data["Name"] = data["Name"].strip()
+    # if data.get("Name"):
+    #     data["Name"] = data["Name"].strip()
 
     # 2. Extract Valve Regurgitation Severity
     valve_map = {
@@ -403,7 +403,7 @@ def process_directory(input_dir, output_file, log_callback=None):
         df = apply_auto_labels(df)
     
     # Reorder columns for better readability
-    base_cols = ["Filename", "MRN", "Name", "Age", "Study Date", "Overall_Diagnosis", "Label", "Disease_Type"]
+    base_cols = ["Filename", "MRN", "Age", "Study Date", "Overall_Diagnosis", "Label", "Disease_Type"]  # Name removed for privacy
     
     # Multi-label flags (NEW - for ML training)
     flag_cols = ["Flag_Normal", "Flag_HFrEF", "Flag_RWMA", "Flag_DCM", "Flag_RV_Dysfunction", 
