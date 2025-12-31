@@ -1,3 +1,4 @@
 pandas
 pdfplumber
 openpyxl
+openai

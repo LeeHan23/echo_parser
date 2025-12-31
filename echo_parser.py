@@ -49,6 +49,13 @@ PATTERNS = {
     "AV Vmax": r"AV\s*Vmax\s*[:]?\s*([\d.]+)\s*m/s",
     "AV Mean PG": r"AV\s*mean\s*PG\s*[:]?\s*([\d.]+)\s*mmHg",
     
+    # Mitral Valve
+    "MV Mean PG": r"MV\s*mean\s*PG\s*[:]?\s*([\d.]+)\s*mmHg",
+    "MV Area": r"MVA\s*[:]?\s*([\d.]+)\s*cm",
+    
+    # Pulmonary Valve
+    "PV Vmax": r"PV\s*Vmax\s*[:]?\s*([\d.]+)\s*m/s",
+    
     # Vitals
     "BP Systolic": r"BP\s*Systolic\s*[:]\s*(\d+)",
     "BP Diastolic": r"BP\s*Diastolic\s*[:]\s*(\d+)",
@@ -137,6 +144,20 @@ def apply_auto_labels(df):
     group_structural = []
     overall_diagnosis = []
     
+    # New Categorical Columns (ASE)
+    lvef_categories = []
+    pasp_severities = []
+    
+    # NEW: BSE Diastolic Column
+    bse_diastolic_statuses = []
+    
+    # NEW: Heart Disease -2 Columns
+    hf_subtypes = []
+    lv_geometries = []
+    as_severities = []
+    ms_severities = []
+    ps_severities = []
+    
     # Multi-label binary flags (NEW)
     flag_normal = []
     flag_hfref = []
@@ -172,12 +193,23 @@ def apply_auto_labels(df):
         # --- Parameters ---
         lvef = get_val('LVEF', 55.0)
         lvedvi = get_val('LVEDVi')
+        lvidd = get_val('LVIDD') # Need LVIDd for RWT
         ivsd = get_val('IVSd', 0.9)
         lvpwd = get_val('LVPWd', 0.9)
         
         diastolic_grade = get_val('Diastolic Dysfunction Grade', 0.0)
         lavi = get_val('LAVi', 20.0)
         e_e_avg = get_val("E/e' Average")
+        e_prime_medial = get_val("e' Medial")
+        e_prime_lateral = get_val("e' Lateral")
+        tr_vmax = get_val("TR Vmax")
+        
+        # Valve Params
+        av_vmax = get_val("AV Vmax")
+        av_mean_pg = get_val("AV Mean PG")
+        mv_mean_pg = get_val("MV Mean PG")
+        mv_area = get_val("MV Area")
+        pv_vmax = get_val("PV Vmax")
         
         tapse = get_val('TAPSE', 2.0)
         tv_s = get_val("TV S'", 15.0)
@@ -196,15 +228,142 @@ def apply_auto_labels(df):
         def is_significant_regurg(text):
             return any(x in text for x in ['mild', 'moderate', 'severe']) and 'trivial' not in text and 'minimal' not in text
         
+        # --- ASE GRADING LOGIC (Defaulting to Male if Gender unspecified) ---
+        
+        # LVEF Categorization
+        # LVEF Categorization & HF Subtype
+        lvef_cat = "Normal"
+        hf_subtype = "Normal"
+        
+        if lvef is not None:
+             # LVEF Grading
+             if lvef < 30: lvef_cat = "Severely Reduced"
+             elif lvef < 41: lvef_cat = "Moderately Reduced"
+             elif lvef < 52: lvef_cat = "Mildly Reduced"
+             
+             # HF Subtype
+             if lvef <= 40: hf_subtype = "HFrEF"
+             elif lvef <= 49: hf_subtype = "HFmrEF"
+             else: hf_subtype = "HFpEF" # >= 50
+             
+        # LV Geometry (RWT)
+        # RWT = (2 * LVPWd) / LVIDd
+        # Normal 0.6-1.0 cm wall thickness provided in doc (refining >1.2 to >1.0)
+        wall_thick_threshold = 1.0 
+        has_new_lvh = (ivsd is not None and ivsd > wall_thick_threshold) or (lvpwd is not None and lvpwd > wall_thick_threshold)
+        
+        lv_geometry = "Normal Geometry"
+        if lvpwd is not None and lvidd is not None and lvidd > 0:
+            rwt = (2 * lvpwd) / lvidd
+            if has_new_lvh:
+                if rwt > 0.42: lv_geometry = "Concentric Hypertrophy"
+                else: lv_geometry = "Eccentric Hypertrophy"
+            else:
+                 if rwt > 0.42: lv_geometry = "Concentric Remodeling"
+                 else: lv_geometry = "Normal Geometry"
+                 
+        # Valve Stenosis Grading
+        as_severity = "Normal"
+        if av_vmax is not None or av_mean_pg is not None:
+            # Severe: Vmax >= 4.0 or MeanPG >= 40
+            if (av_vmax and av_vmax >= 4.0) or (av_mean_pg and av_mean_pg >= 40): as_severity = "Severe"
+            # Moderate: Vmax 3.0-3.9, MeanPG 20-39
+            elif (av_vmax and av_vmax >= 3.0) or (av_mean_pg and av_mean_pg >= 20): as_severity = "Moderate"
+            # Mild: Vmax 2.0-2.9, MeanPG < 20
+            elif (av_vmax and av_vmax >= 2.0): as_severity = "Mild"
+            
+        ms_severity = "Normal"
+        if mv_mean_pg is not None or mv_area is not None:
+            # Severe: MeanPG > 10, Area < 1.0 (Using 1.5 logic split for severe)
+            if (mv_mean_pg and mv_mean_pg > 10) or (mv_area and mv_area < 1.0): ms_severity = "Severe"
+            # Moderate: MeanPG 5-10, Area 1.0-1.5
+            elif (mv_mean_pg and mv_mean_pg >= 5) or (mv_area and mv_area < 1.5): ms_severity = "Moderate"
+            # Mild: MeanPG < 5, Area > 1.5
+            elif (mv_mean_pg): ms_severity = "Mild" # Area > 1.5 is normal-ish
+            
+        ps_severity = "Normal"
+        # PS: Mild (Vmax <3, PG <36), Mod (Vmax 3-4, PG 36-64), Sev (Vmax >4, PG >64).
+        # We need PG. Can calc or use.
+        pv_pg = None
+        if pv_vmax: pv_pg = 4 * (pv_vmax ** 2)
+        
+        if pv_vmax or pv_pg:
+             if (pv_vmax and pv_vmax > 4.0) or (pv_pg and pv_pg > 64): ps_severity = "Severe"
+             elif (pv_vmax and pv_vmax >= 3.0) or (pv_pg and pv_pg >= 36): ps_severity = "Moderate"
+             # Any flow detected? Usually < 3 is Mild/Normal? 
+             # Doc: Mild < 3.0 m/s. But > what? Normal is usually < 1.7?
+             # Let's assume if > 2.0 it's noteworthy? Or just leave Normal if < 3.
+             # Doc says "Mild < 3.0". Implies anything detected?
+             # Let's mimic AS mild > 2.0 for consistency if unspecified lower bound.
+             elif (pv_vmax and pv_vmax >= 2.0): ps_severity = "Mild"
+
+             
+        # PASP Severity
+        pasp_sev = "Normal"
+        if pasp is not None:
+            if pasp >= 70: pasp_sev = "Severe"
+            elif pasp >= 50: pasp_sev = "Moderate"
+            elif pasp >= 36: pasp_sev = "Mild"
+
+        # --- BSE Diastolic Logic ---
+        bse_positive_count = 0
+        bse_evaluated = 0
+        
+        # 1. Avg E/e' > 14
+        if e_e_avg is not None:
+            bse_evaluated += 1
+            if e_e_avg > 14: bse_positive_count += 1
+            
+        # 2. Septal e' < 7 OR Lateral e' < 10
+        # If both are present, we check the condition properly. If only one, we use that.
+        # Logic: if ANY available e' is below threshold? Or strict AND? 
+        # Guideline says "Septal e' < 7 or Lateral e' < 10". So finding one low is enough to trigger.
+        e_prime_cond = False
+        if e_prime_medial is not None and e_prime_medial < 7: e_prime_cond = True
+        if e_prime_lateral is not None and e_prime_lateral < 10: e_prime_cond = True
+        
+        # We only count this as a 'criterion evaluated' if we honestly checked it. 
+        # But e' is standard. Let's count it if we had either value.
+        if e_prime_medial is not None or e_prime_lateral is not None:
+            bse_evaluated += 1
+            if e_prime_cond: bse_positive_count += 1
+        
+        # 3. TR Vmax > 2.8 m/s
+        if tr_vmax is not None:
+            bse_evaluated += 1
+            if tr_vmax > 2.8: bse_positive_count += 1
+            
+        # 4. LAVi > 34
+        if lavi is not None:
+            bse_evaluated += 1
+            if lavi > 34: bse_positive_count += 1
+            
+        bse_diastolic_status = "Indeterminate/NotEnoughData"
+        # Only classify if we have enough data or strong positive signal
+        if bse_positive_count >= 3:
+             bse_diastolic_status = "Diastolic Dysfunction"
+        elif bse_positive_count <= 1 and bse_evaluated >= 3: 
+             # Need to have evaluated at least 3 to confidently say normal? 
+             # Guideline: "if < 50% positive -> Normal"
+             bse_diastolic_status = "Normal"
+        elif bse_positive_count == 2 and bse_evaluated >= 3:
+             bse_diastolic_status = "Indeterminate"
+        else:
+             # Fallback if sparse data, but we can make a best guess or leave empty
+             if bse_positive_count == 0 and bse_evaluated > 0: bse_diastolic_status = "Normal (Likely)"
+             else: bse_diastolic_status = f"Indeterminate ({bse_positive_count}/{bse_evaluated})"
+
         # --- MULTI-LABEL DISEASE FLAGS ---
         
-        # HFrEF: Reduced ejection fraction
+        # HFrEF: Reduced ejection fraction (< 52% default)
         has_hfref = lvef < 52
         
         # RWMA: Regional wall motion abnormality
         has_rwma = any(x in impression for x in ['hypokinetic', 'akinetic', 'dyskinetic', 'infarction', 'ischemia', 'rwma'])
         
         # DCM: Dilated cardiomyopathy
+        # Using LVEDD > 5.9cm (approx 59mm) as moderate dilation for Male, or Volume criteria if available
+        # Simplified: 'dilated' in impression or LVEDVi significant
         has_dcm = ('dilated cardiomyopathy' in impression or 'dcm' in impression or (lvedvi and lvedvi > 75))
         
         # RV Dysfunction
@@ -213,21 +372,23 @@ def apply_auto_labels(df):
         
         # Diastolic Dysfunction (any grade)
         has_diastolic_dysfunction = (diastolic_grade >= 1 or "diastolic dysfunction" in impression or 
-                                      "impaired relaxation" in impression or (lavi and lavi > 34))
+                                      "impaired relaxation" in impression or (lavi and lavi > 34) or
+                                      (e_e_avg and e_e_avg > 14))
         
         # LVH: Left ventricular hypertrophy
-        has_lvh = (ivsd > 1.2 or lvpwd > 1.2)
+        has_lvh = (ivsd is not None and ivsd > wall_thick_threshold) or (lvpwd is not None and lvpwd > wall_thick_threshold)
         
         # HCM: Hypertrophic cardiomyopathy
         has_hcm = ('hypertrophic cardiomyopathy' in impression or 'hcm' in impression or 'hocm' in impression)
         
-        # Valvular Disease: Any significant regurgitation or stenosis
+        # Valvular Disease: Any significant regurgitation (>= Mild) or stenosis
+        has_stenosis = (as_severity != "Normal" or ms_severity != "Normal" or ps_severity != "Normal" or "stenosis" in impression)
         has_valvular = (is_significant_regurg(mitral_regurg) or is_significant_regurg(aortic_regurg) or 
                         is_significant_regurg(tricuspid_regurg) or is_significant_regurg(pulm_regurg) or 
-                        "stenosis" in impression)
+                        has_stenosis)
         
         # Elevated PASP
-        has_elevated_pasp = pasp > 40
+        has_elevated_pasp = pasp >= 36 # Used >= 36 for Mild+
         
         # Structural Abnormality: Effusion, thrombus, mass, shunt
         has_structural = any(x in impression for x in ["effusion", "thrombus", "mass", "asd", "vsd", "shunt"])
@@ -251,7 +412,7 @@ def apply_auto_labels(df):
         
         # --- GROUP STATUS (for human readability) ---
         lv_status = "Normal"
-        if has_hfref: lv_status = "Abnormal (Reduced EF)"
+        if has_hfref: lv_status = f"Abnormal ({lvef_cat})"
         elif has_rwma: lv_status = "Abnormal (RWMA)"
         elif has_lvh: lv_status = "Abnormal (LVH)"
         elif has_dcm: lv_status = "Abnormal (Dilated)"
@@ -282,7 +443,7 @@ def apply_auto_labels(df):
             
         pasp_status = "Normal"
         if has_elevated_pasp:
-            pasp_status = f"Abnormal ({int(pasp)} mmHg)"
+            pasp_status = f"Abnormal ({pasp_sev}, {int(pasp)} mmHg)"
             
         structural_status = "Normal"
         struct_issues = []
@@ -305,6 +466,14 @@ def apply_auto_labels(df):
         group_pasp.append(pasp_status)
         group_structural.append(structural_status)
         overall_diagnosis.append(final_diagnosis)
+        lvef_categories.append(lvef_cat)
+        pasp_severities.append(pasp_sev)
+        bse_diastolic_statuses.append(bse_diastolic_status)
+        hf_subtypes.append(hf_subtype)
+        lv_geometries.append(lv_geometry)
+        as_severities.append(as_severity)
+        ms_severities.append(ms_severity)
+        ps_severities.append(ps_severity)
         
         # --- LEGACY MAPPING (backward compatibility) ---
         curr_label = 0
@@ -358,6 +527,14 @@ def apply_auto_labels(df):
     df['Group_PASP_Status'] = group_pasp
     df['Group_Structural_Status'] = group_structural
     df['Overall_Diagnosis'] = overall_diagnosis
+    df['LVEF_Category'] = lvef_categories
+    df['PASP_Severity'] = pasp_severities
+    df['BSE_Diastolic_Status'] = bse_diastolic_statuses
+    df['HF_Subtype'] = hf_subtypes
+    df['LV_Geometry'] = lv_geometries
+    df['AS_Severity'] = as_severities
+    df['MS_Severity'] = ms_severities
+    df['PS_Severity'] = ps_severities
     
     return df
 
@@ -410,8 +587,9 @@ def process_directory(input_dir, output_file, log_callback=None):
                  "Flag_Diastolic_Dysfunction", "Flag_LVH", "Flag_HCM", "Flag_Valvular_Disease", 
                  "Flag_Elevated_PASP", "Flag_Structural_Abnormality"]
     
-    group_cols = ["Group_LV_Status", "Group_Diastolic_Status", "Group_RV_Status", "Group_Atria_Status", "Group_Valves_Status", "Group_PASP_Status", "Group_Structural_Status"]
-    param_cols = ["LVEF", "LVEDVi", "IVSd", "PASP", "E/A Ratio", "LAVi", "TAPSE", "Impression"]
+    group_cols = ["Group_LV_Status", "Group_Diastolic_Status", "Group_RV_Status", "Group_Atria_Status", "Group_Valves_Status", "Group_PASP_Status", "Group_Structural_Status", 
+                  "BSE_Diastolic_Status", "HF_Subtype", "LV_Geometry", "AS_Severity", "MS_Severity", "PS_Severity"]
+    param_cols = ["LVEF", "LVEF_Category", "LVEDVi", "IVSd", "PASP", "PASP_Severity", "E/A Ratio", "LAVi", "TAPSE", "Impression"]
     
     # Combine and ensure existence
     final_cols = base_cols + flag_cols + group_cols + param_cols + ["Error"]

@@ -1,0 +1,137 @@
+Comprehensive Echocardiogram Report Keywords & Disease Terms
+1. Patient & Study Information
+- Name
+- MRN
+- IC / ID Number
+- Age
+- Gender
+- DOB
+- Study Date
+- Indication
+- Diagnosis
+- Referring Doctor
+- Height
+- Weight
+- BSA
+- Acoustic Window: Good/Fair/Poor
+2. Left Ventricle (LV) – Structure
+- LV size
+- LV dimension
+- LVEDD / LVEDd
+- LVESD / LVESd
+- LVEDV
+- LVESV
+- LV mass
+- LV hypertrophy
+- Concentric hypertrophy
+- Eccentric hypertrophy
+- IVSd
+- LVPWd
+- RWMA
+- Hypokinesia
+- Akinesia
+- Dyskinesia
+- Aneurysm
+- Global Longitudinal Strain (GLS)
+3. LV – Function
+- LVEF (%)
+- Normal systolic function
+- Mildly impaired systolic function
+- Moderately impaired systolic function
+- Severely impaired systolic function
+- Diastolic dysfunction (Grade I/II/III)
+- E/A ratio
+- E/e’ ratio
+- e’ septal
+- e’ lateral
+- Average e’
+4. Left Atrium (LA)
+- LA size
+- LA volume
+- LA volume index
+- LA enlargement
+5. Right Ventricle (RV)
+- RV size
+- RV function
+- TAPSE
+- S’ velocity
+- RV strain
+- FAC
+- RV dysfunction (mild/moderate/severe)
+6. Right Atrium (RA)
+- RA size
+- RA area
+- RA volume
+- RA enlargement
+7. Valvular Heart Disease
+- Aortic stenosis
+- Aortic regurgitation
+- Aortic sclerosis
+- Bicuspid AV
+- Mitral regurgitation
+- Mitral stenosis
+- Mitral valve prolapse
+- MAC (Mitral annulus calcification)
+- SAM
+- Tricuspid regurgitation
+- Pulmonary regurgitation
+- Pulmonary stenosis
+- Valve severity: Mild / Moderate / Severe
+8. Cardiomyopathies
+- Dilated cardiomyopathy (DCM)
+- Hypertrophic cardiomyopathy (HCM)
+- Apical HCM
+- HOCM / LVOT obstruction
+- Restrictive cardiomyopathy
+- LV non-compaction (LVNC)
+- Amyloidosis
+- Sarcoidosis
+9. Heart Failure
+- Reduced EF
+- HFrEF
+- HFpEF
+- Elevated filling pressures
+- Dilated LV
+- Dilated RV
+10. Pulmonary Hypertension / RV Strain
+- PASP
+- RVSP
+- Pulmonary hypertension (mild/moderate/severe)
+- Dilated RV
+- Reduced RV function
+- TAPSE low
+11. Pericardial Diseases
+- Pericardial effusion (mild/moderate/severe)
+- Tamponade
+- RA/RV collapse
+- Fibrin strands
+- Pericarditis
+12. Aortic Pathology
+- Dilated aortic root
+- Dilated ascending aorta
+- Sinus of Valsalva aneurysm
+- Aortic dissection
+13. Congenital Heart Disease
+- ASD
+- VSD
+- PDA
+- PFO
+- Ebstein anomaly
+- Bicuspid AV
+- Coarctation of aorta
+- Repaired congenital CHD
+14. IVC & Volume Status
+- IVC diameter
+- IVC collapsibility
+- RA pressure estimate
+- Dilated IVC
+- Plethoric IVC
+15.Diagnostic Phrases
+- Good acoustic window
+- Fair acoustic window
+- Poor acoustic window
+- Mild concentric LVH
+- Eccentric LVH
+- Calcified valve
+- Thickened leaflet
+- Normal findings
