@@ -1,13 +1,30 @@
-# Ignore all PNG images
-*.png
+# System files
+.DS_Store
+.VSCode
+*.log
 
-# Ignore all JPG images
-*.jpg
-*.jpeg
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
 
-#Ignore all docx files
+# Build Artifacts
+build/
+dist/
+*.spec
+
+# Datasets and Reports (Privacy/Large files)
+reports/
+*.pdf
 *.docx
 *.doc
 *.txt
-*,pdf
 *.xlsx
+*.csv
+
+# Images
+*.png
+*.jpg
+*.jpeg
