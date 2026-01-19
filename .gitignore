@@ -1,0 +1,13 @@
+# Ignore all PNG images
+*.png
+
+# Ignore all JPG images
+*.jpg
+*.jpeg
+
+#Ignore all docx files
+*.docx
+*.doc
+*.txt
+*,pdf
+*.xlsx

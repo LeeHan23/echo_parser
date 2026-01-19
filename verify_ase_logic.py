@@ -139,6 +139,62 @@ def test_new_heart_disease_logic():
     else:
         print("FAIL: AS_Severity column missing")
 
+def test_gender_logic():
+    print("\n--- Testing Gender Logic (Generalized) ---")
+    data = [
+        # Case 1: Male (Last digit 7 is Odd) - Standard 'doc (7).pdf'
+        {'Filename': 'doc (7).pdf', 'LVEF': 53, 'LVEDVi': 70, 'RAVi': 24, 'LAd': 3.9, 'Impression': ''},
+        
+        # Case 2: Female (Last digit 4 is Even) - 'patient 1234.pdf'
+        # Female Normal LVEF >= 54. 53 is Mildly Reduced.
+        {'Filename': 'patient 1234.pdf', 'LVEF': 53, 'LVEDVi': 65, 'RAVi': 22, 'LAd': 3.9, 'Impression': ''},
+        
+        # Case 3: Male (Last digit 1 is Odd) - 'report_2025_001.pdf'
+        # Abnormal LVEDVi > 74 (M)
+        {'Filename': 'report_2025_001.pdf', 'LVEF': 60, 'LVEDVi': 76, 'RAVi': 30, 'LAd': 4.1, 'Impression': ''},
+        
+        # Case 4: Female (Last digit 0 is Even) - '100.pdf'
+        {'Filename': '100.pdf', 'LVEF': 60, 'LVEDVi': 60, 'RAVi': 20, 'LAd': 3.5, 'Impression': ''},
+    ]
+    
+    df = pd.DataFrame(data)
+    df = apply_auto_labels(df)
+    
+    # Check Gender Inferred
+    if 'Gender_Inferred' in df.columns:
+        genders = df['Gender_Inferred'].tolist()
+        expected_genders = ['Male', 'Female', 'Male', 'Female']
+        for i, (exp, act) in enumerate(zip(expected_genders, genders)):
+             print(f"Case {i+1} ({data[i]['Filename']}) Gender: {'PASS' if exp == act else f'FAIL (Expected {exp}, got {act})'}")
+    else:
+        print("FAIL: Gender_Inferred column missing")
+        return 
+        
+    # Check LVEF Category
+    # Case 1 M (53%): Normal (>=52)
+    # Case 2 F (53%): Mildly Reduced (41-53)
+    lvef_cats = df['LVEF_Category'].tolist()
+    expected_lvef = ['Normal', 'Mildly Reduced', 'Normal']
+    for i, (exp, act) in enumerate(zip(expected_lvef, lvef_cats)):
+        print(f"Case {i+1} LVEF Cat: {'PASS' if exp == act else f'FAIL (Expected {exp}, got {act})'}")
+
+    # Check DCM Flag (LVEDVi)
+    # Case 1 M (70): Normal (<=74) -> No DCM (unless dilated string)
+    # Case 2 F (65): Abnormal (>61) -> DCM Flag
+    # Case 3 M (76): Abnormal (>74) -> DCM Flag
+    dcm_flags = df['Flag_DCM'].tolist()
+    expected_dcm = [0, 1, 1]
+    for i, (exp, act) in enumerate(zip(expected_dcm, dcm_flags)):
+        print(f"Case {i+1} DCM Flag: {'PASS' if exp == act else f'FAIL (Expected {exp}, got {act})'}")
+
+    # Check Atria (RAVi)
+    # Case 1 M (24): Normal (<=25)
+    # Case 2 F (22): Abnormal (>21)
+    atria_status = df['Group_Atria_Status'].tolist()
+    # Expect "Abnormal (Dilated RA)" if RAVi triggers
+    print(f"Case 1 Atria: {'PASS' if 'Normal' in atria_status[0] else f'FAIL (Expected Normal, got {atria_status[0]})'}")
+    print(f"Case 2 Atria: {'PASS' if 'Dilated RA' in atria_status[1] else f'FAIL (Expected Dilated RA, got {atria_status[1]})'}")
+
 if __name__ == "__main__":
     try:
         test_lvef_grading()
@@ -146,6 +202,7 @@ if __name__ == "__main__":
         test_tapse()
         test_bse_diastolic()
         test_new_heart_disease_logic()
+        test_gender_logic()
     except KeyError as e:
         print(f"CRITICAL FAIL: Column not found - {e}")
     except Exception as e:

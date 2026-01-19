@@ -158,6 +158,9 @@ def apply_auto_labels(df):
     ms_severities = []
     ps_severities = []
     
+    # NEW: Gender
+    genders_inferred = []
+    
     # Multi-label binary flags (NEW)
     flag_normal = []
     flag_hfref = []
@@ -177,6 +180,22 @@ def apply_auto_labels(df):
 
     for index, row in df.iterrows():
         impression = str(row.get('Impression', '')).lower() if pd.notna(row.get('Impression')) else ""
+        filename = str(row.get('Filename', ''))
+        
+        # --- Gender Inference ---
+        # Logic: Extract numbers from filename. The last digit of the LAST number determines gender.
+        # Odd = Male, Even = Female.
+        # Default to Male if no numbers found.
+        gender = "Male"
+        # Find all sequences of digits
+        numbers = re.findall(r'\d+', filename)
+        if numbers:
+             # Take the last number found, and its last digit
+             last_digit = int(numbers[-1][-1])
+             if last_digit % 2 == 0:
+                 gender = "Female"
+             else:
+                 gender = "Male"
         
         # --- Helper for parsing floats ---
         def get_val(col, default=None):
@@ -236,11 +255,18 @@ def apply_auto_labels(df):
         hf_subtype = "Normal"
         
         if lvef is not None:
-             # LVEF Grading
-             if lvef < 30: lvef_cat = "Severely Reduced"
-             elif lvef < 41: lvef_cat = "Moderately Reduced"
-             elif lvef < 52: lvef_cat = "Mildly Reduced"
-             
+             # LVEF Grading (Gender Specific)
+             # Male: Normal >= 52, Mild 41-51, Mod 30-40, Sev < 30
+             # Female: Normal >= 54, Mild 41-53, Mod 30-40, Sev < 30
+             if gender == "Male":
+                 if lvef < 30: lvef_cat = "Severely Reduced"
+                 elif lvef < 41: lvef_cat = "Moderately Reduced"
+                 elif lvef < 52: lvef_cat = "Mildly Reduced"
+             else: # Female
+                 if lvef < 30: lvef_cat = "Severely Reduced"
+                 elif lvef < 41: lvef_cat = "Moderately Reduced"
+                 elif lvef < 54: lvef_cat = "Mildly Reduced"
+
              # HF Subtype
              if lvef <= 40: hf_subtype = "HFrEF"
              elif lvef <= 49: hf_subtype = "HFmrEF"
@@ -363,8 +389,9 @@ def apply_auto_labels(df):
         
         # DCM: Dilated cardiomyopathy
         # Using LVEDD > 5.9cm (approx 59mm) as moderate dilation for Male, or Volume criteria if available
-        # Simplified: 'dilated' in impression or LVEDVi significant
-        has_dcm = ('dilated cardiomyopathy' in impression or 'dcm' in impression or (lvedvi and lvedvi > 75))
+        # LVEDVi Thresholds: Male > 74, Female > 61
+        lvedvi_limit = 74 if gender == "Male" else 61
+        has_dcm = ('dilated cardiomyopathy' in impression or 'dcm' in impression or (lvedvi and lvedvi > lvedvi_limit))
         
         # RV Dysfunction
         has_rv_dysfunction = ((tapse and tapse < 1.7) or (tv_s and tv_s < 9.5) or 
@@ -427,7 +454,13 @@ def apply_auto_labels(df):
         elif has_rv_dysfunction: rv_status = "Abnormal (Impression)"
         
         atria_status = "Normal"
-        if ravi and ravi > 34: atria_status = "Abnormal (Dilated RA)"
+        # RAVi Thresholds: Male > 25, Female > 21
+        ravi_limit = 25 if gender == "Male" else 21
+        # LAd Thresholds (Linear): Male > 4.0, Female > 3.8
+        lad_limit = 4.0 if gender == "Male" else 3.8
+        
+        if ravi and ravi > ravi_limit: atria_status = "Abnormal (Dilated RA)"
+        elif lad and lad > lad_limit: atria_status = "Abnormal (Dilated LA)"
         elif "atrial enlargement" in impression or "dilated la" in impression or "dilated ra" in impression: 
             atria_status = "Abnormal (Impression)"
         
@@ -474,6 +507,7 @@ def apply_auto_labels(df):
         as_severities.append(as_severity)
         ms_severities.append(ms_severity)
         ps_severities.append(ps_severity)
+        genders_inferred.append(gender)
         
         # --- LEGACY MAPPING (backward compatibility) ---
         curr_label = 0
@@ -535,6 +569,7 @@ def apply_auto_labels(df):
     df['AS_Severity'] = as_severities
     df['MS_Severity'] = ms_severities
     df['PS_Severity'] = ps_severities
+    df['Gender_Inferred'] = genders_inferred
     
     return df
 
@@ -588,7 +623,7 @@ def process_directory(input_dir, output_file, log_callback=None):
                  "Flag_Elevated_PASP", "Flag_Structural_Abnormality"]
     
     group_cols = ["Group_LV_Status", "Group_Diastolic_Status", "Group_RV_Status", "Group_Atria_Status", "Group_Valves_Status", "Group_PASP_Status", "Group_Structural_Status", 
-                  "BSE_Diastolic_Status", "HF_Subtype", "LV_Geometry", "AS_Severity", "MS_Severity", "PS_Severity"]
+                  "BSE_Diastolic_Status", "HF_Subtype", "LV_Geometry", "AS_Severity", "MS_Severity", "PS_Severity", "Gender_Inferred"]
     param_cols = ["LVEF", "LVEF_Category", "LVEDVi", "IVSd", "PASP", "PASP_Severity", "E/A Ratio", "LAVi", "TAPSE", "Impression"]
     
     # Combine and ensure existence
@@ -620,7 +655,7 @@ def process_directory(input_dir, output_file, log_callback=None):
     log("Processing Complete.")
 
 def main():
-    input_dir = "reports" 
+    input_dir = '/Volumes/T7 Shield/reports' 
     output_file = "echo_dataset_annotations.xlsx"
     process_directory(input_dir, output_file)
 
